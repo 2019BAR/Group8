@@ -1,0 +1,228 @@
+---
+title: "期中"
+output: html_document
+date: "`r Sys.time()`"
+output: 
+  html_document:
+    highlight: pygments
+    theme: flatly
+    css: style.css
+---
+
+```{r setup, include=FALSE, results='hide', message=FALSE, warning=FALSE, echo=F}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(maps) 
+library(ggplot2)
+library(ggpubr)
+library(GGally)
+library(corrplot)
+```
+
+
+
+```{r}
+load("C:/Users/Jowett Jhang/Desktop/2019RPB/Group8/datamidterm/Olisttrans.RData")
+load("C:/Users/Jowett Jhang/Desktop/2019RPB/Group8/unit09/data/Z.rdata")
+```
+
+```{r pressure, echo=FALSE}
+Olisttrans$order_approved_at<-as.POSIXct(Olisttrans$order_approved_at,format="%Y-%m-%d %H:%M:%S")
+Olisttrans$order_purchase_timestamp<-as.POSIXct(Olisttrans$order_purchase_timestamp,format="%Y-%m-%d %H:%M:%S")
+Olisttrans$order_delivered_carrier_date<-as.POSIXct(Olisttrans$order_delivered_carrier_date,format="%Y-%m-%d %H:%M:%S")
+Olisttrans$order_delivered_customer_date<-as.POSIXct(Olisttrans$order_delivered_customer_date,format="%Y-%m-%d %H:%M:%S")
+Olisttrans$order_estimated_delivery_date<-as.POSIXct(Olisttrans$order_estimated_delivery_date,format="%Y-%m-%d %H:%M:%S")
+O_Data=Olisttrans[,c(4:12,17:20,31,33:35,38:39,44)]
+```
+
+```{r}
+O_Data=O_Data[complete.cases(O_Data[,5:9]),]
+```
+
+
+```{r}
+revT=difftime(O_Data$review_answer_timestamp,O_Data$review_creation_date,units="days")
+aprovT =difftime(O_Data$order_estimated_delivery_date,O_Data$order_delivered_customer_date,units="days")
+deliT =difftime(O_Data$order_delivered_customer_date,O_Data$order_delivered_carrier_date,units="days")
+O_Data1= cbind(O_Data,deliT,aprovT,revT)
+```
+
+```{r}
+Orderno=table( unique(O_Data1[, c(1,16)])$order_id ) %>% table #評論最多可能談到三個訂單
+
+Orderitem=table( unique(O_Data1[, c(1,10)])$order_id ) %>% table #訂單包含多少商品
+```
+
+```{r}
+table( unique(O_Data1[, c(1,4)])$order_status ) #由訂單看出貨物運送結果，
+
+deliO=filter(O_Data1,O_Data1$order_status=="delivered")
+#table(deliO$review_score,deliO$deliT)
+#Orderdeliver=table(deliO$review_score,deliO$revT)
+
+canO=filter(O_Data1,O_Data1$order_status=="canceled")
+#table(canO$deliT,canO$review_score)
+#Ordercancel=table(canO$revT,canO$review_score)  #就其中取消的訂單中，回復時間長與運送時間太久會影響星等
+
+```
+
+
+```{r}
+#移除2016資料(資料太少了)
+O_Data1=filter(O_Data1,O_Data1$order_purchase_timestamp<"2018-12-31"&O_Data1$order_purchase_timestamp>"2017-01-01")
+
+#付款方式每月變動
+table(Type=O_Data1$payment_type,Year=format(O_Data1$order_purchase_timestamp,'%Y-%m')) %>% prop.table(margin=2)
+#線上支付比率持續上升，其中非信用卡支付比率持續降低
+
+#每月訂單變化
+table(month=format(O_Data1$order_purchase_timestamp,'%Y-%m')) 
+#可看出每月月訂單增加率幅度快，處於快速成長階段
+
+#一天中訂單下訂變化
+table(Hours=format(O_Data1$order_purchase_timestamp,'%H')) 
+#熱門時間多分布在10am-10pm之間，因此在活動發布時間可做此為依據
+
+```
+
+```{r}
+O_Data2=filter(O_Data1, !is.na(product_category_name_english)) %>% 
+   rename(
+    time = order_purchase_timestamp,
+    prod_category=product_category_name_english)
+```
+
+
+```{r}
+category = O_Data2 %>% 
+  group_by(prod_category) %>% 
+  summarise(
+    ItemsSold = n(),
+    totalpay = sum(payment_value),
+    noProd = n_distinct(product_id),
+    nobuyer = n_distinct(order_id),
+    avgPrice = mean(price),
+    maxPrice = max(price),
+    minPrice = min(price),
+    avgFreight = mean(freight_value),
+    dummy = 2018
+  ) %>% arrange(desc(totalpay))
+
+top20 = category$prod_category[1:20]
+category[1:20,]
+
+op = options(gvis.plot.tag='chart')
+m= gvisMotionChart(
+  category, "prod_category", "dummy", 
+  options=list(width=800, height=600) )
+plot(m)
+```
+
+
+```{r}
+O_type= O_Data2 %>%  
+  filter(prod_category %in% top20) %>%           
+  group_by(prod_category) %>%  
+  summarise(
+  ItemsSold = n(),
+  pay = sum(payment_value),
+  noProd = n_distinct(product_id),
+  nobuyer = n_distinct(order_id),
+  avgPrice = mean(price),
+  maxPrice = max(price),
+  minPrice = min(price),
+  avgFreight = mean(freight_value),
+  avgpayProd = pay/noProd,
+  avgItemsProd = ItemsSold/noProd,
+  avgdeliver= mean(deliT),
+  noReview = n(),
+  avgScore = mean(review_score),
+  avgReview = mean(noReview),
+  avgRevtime = mean(revT)
+) %>% arrange(prod_category)   
+
+O_type2 = O_type %>% 
+  filter(!(prod_category %in% c("computers", "office_furniture"))) %>% 
+  mutate(Score = pmax(avgScore, 3)) %>% as.data.frame
+
+O_type2$year = 2018
+op1 = options(gvis.plot.tag='chart')
+m1 = gvisMotionChart(
+  O_type2, "prod_category", "year",
+  options=list(width=720, height=480) )
+plot(m1)
+
+#然而boleto的訂單支付量很多，因此其支付比率降低是Olist需要警覺的
+#而信用卡支付
+```
+
+```{r}
+tapply(O_Data1$deliT,O_Data1$product_category_name_english,mean) %>%sort %>% tail(20)
+summary(tapply(O_Data1$deliT,O_Data1$product_category_name_english,mean)) #各商品運送時間(平均日)
+#期中發現商品大小可能會影響運送時間，運送時間平均為八日，
+```
+
+```{r}
+tapply(O_Data1$revT,O_Data1$product_category_name_english,mean) %>%sort %>% tail(20)#各商品回復時間(平均日)
+sd(O_Data1$revT)
+summary(tapply(O_Data1$revT,O_Data1$product_category_name_english,mean)) 
+#
+```
+
+```{r}
+group_by(O_Data1,review_score)
+tapply(O_Data1$deliT,O_Data1$review_score,mean)#星等的運送時間
+
+tapply(O_Data1$revT,O_Data1$review_score,mean)#星等的回復時間
+```
+
+
+```{r}
+#Olist (零售商)
+
+#“實現夢想，滿足人們的消費需求，節省時間和金錢，超出他們的期望”
+
+#願景
+
+#“成為巴西最好的零售公司。”
+
+#最好的公司包括：
+
+#由顧客，被視為最佳購買選擇
+#通過股東/投資者，我們被視為該細分市場的最佳回報
+#對於員工來說，被認為是職業發展的最佳選擇
+#通過供應商，我們被視為最佳分銷渠道
+#對於公司而言，我們被視為具有社會和生態責任感的公司
+
+#差異
+
+#在銷售渠道中享有很高的聲譽，直接影響廣告的可見度。 - 用於決策和參與銷售活動的商業情報。 - 在價格和運費方面的競爭解決方案，增加轉換的機會。
+
+#允許銷售的單一合同
+
+#獨特的合同，允許在該國的主要市場銷售。 - 產品，訂單，財務，物流和SAC的集中管理。 - 分期預付100％的銷售額。 - 團隊對最終消費者的初始服務。
+
+#買賣家分布地圖，買家(商品)分布地圖
+#
+
+#文字雲，做不佳(1,2星)與佳(3,4,5)
+#差的因素有: 商家聯繫狀況不佳、沒收到商品、訂單狀況未知
+#佳的因素有:快速送達、商品品質佳
+#評價找商品回去找前幾名賣家
+#依商品分優良賣家
+#因此針對訂單運送作分析
+#抓出運送時間與星等與(訂單&確認時間/訂單交送物流時間/運送&送達時間)的表格
+
+#物流問題(長期而言可建置物流體系)&運送補貼
+#評分淘汰不良賣家，優量賣家公布商場首頁，增加賣家間競爭
+#針對回復狀況可以推及時回覆系統
+
+```
+```
+
+
+```{r}
+#作檢定好嗎? 
+#做總結資料框(老師上週做的)
+
+```
