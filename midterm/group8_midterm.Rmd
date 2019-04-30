@@ -1,0 +1,297 @@
+---
+title: "期中競賽_第八組"
+output: html_document
+date: "`r Sys.time()`"
+
+---
+
+<br><hr>
+
+基本的程式筆記設定
+```{r results='hide', message=FALSE, warning=FALSE, echo=F}
+# This Chunk is for format setting, Do NOT Change the codes !
+rm(list=ls(all=T))
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(comment = NA)
+knitr::opts_knit$set(global.par = TRUE)
+par(cex=0.8)
+options(scipen=20, digits=5, width=80)
+if(!require(pacman)) install.packages("pacman")
+
+pacman::p_load(dplyr, MASS, maps, Imap, ggplot2 , dendextend, vegan, randomcoloR, googleVis, ggpubr, GGally, d3heatmap, gcookbook, tidyverse, tidyr, lubridate,readr  )
+```
+
+安裝、載入一些基本的套件
+```{r}
+#簡化各資料集名稱
+OCD<-data.table::fread("olist_customers_dataset.csv",encoding = "UTF-8",data.table = F)
+OGD<-data.table::fread("olist_geolocation_dataset.csv",encoding = "UTF-8",data.table = F)
+OOID<-data.table::fread("olist_order_items_dataset.csv",encoding = "UTF-8",data.table = F)
+OOPD<-data.table::fread("olist_order_payments_dataset.csv",encoding = "UTF-8",data.table = F)
+OORD<-data.table::fread("olist_order_reviews_dataset.csv",encoding = "UTF-8",data.table = F)
+OOD<-data.table::fread("olist_orders_dataset.csv",encoding = "UTF-8",data.table = F)
+OPD<-data.table::fread("olist_products_dataset.csv",encoding = "UTF-8",data.table = F)
+OSD<-data.table::fread("olist_sellers_dataset.csv",encoding = "UTF-8",data.table = F)
+PCNT<-data.table::fread("product_category_name_translation.csv",encoding = "UTF-8",data.table = F)
+complete2<-data.table::fread("complete2.csv",data.table = F,encoding = "UTF-8")
+complete2_OORD_merge<-data.table::fread("complete2_OORD_merge.csv",encoding = "UTF-8",data.table = F)
+load("C:/Users/Jowett Jhang/Desktop/2019RPB/Group8/datamidterm/OORD_OOD_OOID_OPD_PCNT_merge.rdata")
+load("C:/Users/Jowett Jhang/Desktop/2019RPB/Group8/datamidterm/OORD_OOD_OOPD_merge.rdata")
+load("C:/Users/Jowett Jhang/Desktop/2019RPB/Group8/datamidterm/Olisttrans.RData")
+load("C:/Users/Jowett Jhang/Desktop/O_Data1.RData")
+```
+
+- - -
+**熱圖基本分析**
+
+
+```{r}
+#TOP10商品種類與評價熱圖
+OORD_OOD_OOID_OPD_PCNT_merge_hot<-subset(OORD_OOD_OOID_OPD_PCNT_merge,product_category_name_english== c('telephony','watches_gifts','toys','icomputers_accessories','auto', 'housewares','health_beauty','furniture_decor','sports_leisure','bed_bath_table'))
+
+table(OORD_OOD_OOID_OPD_PCNT_merge_hot$review_score, OORD_OOD_OOID_OPD_PCNT_merge_hot$product_category_name_english)
+
+category_score_heatmap<-table(OORD_OOD_OOID_OPD_PCNT_merge_hot$review_score, OORD_OOD_OOID_OPD_PCNT_merge_hot$product_category_name_english) %>% 
+  as.data.frame.matrix %>% 
+  d3heatmap(F,F,col=colorRamp(c('seagreen','lightyellow','red')))
+
+category_score_heatmap
+```
+
+```{r}
+#付款方式與評價熱圖
+table(review_score=OORD_OOD_OOPD_merge$review_score, payment_type=OORD_OOD_OOPD_merge$payment_type)
+
+table(OORD_OOD_OOPD_merge$review_score, OORD_OOD_OOPD_merge$payment_type) %>% 
+  as.data.frame.matrix %>% 
+  d3heatmap(F,F,col=colorRamp(c('seagreen','lightyellow','red')))
+```
+
+
+**資料基本分析**
+
+
+```{r}
+
+#付款方式每月變動
+A=table(Type=O_Data1$payment_type,Year=format(O_Data1$order_purchase_timestamp,'%Y-%m')) %>% prop.table(margin=2)
+#線上支付比率持續上升，其中非信用卡支付比率持續降低
+write.csv(A,file="A.csv")
+#每月訂單變化
+table(month=format(O_Data1$order_purchase_timestamp,'%Y-%m')) 
+#可看出每月月訂單增加率幅度快，處於快速成長階段
+
+#一天中訂單下訂變化
+table(Hours=format(O_Data1$order_purchase_timestamp,'%H')) 
+#熱門時間多分布在10am-10pm之間，因此在活動發布時間可做此為依據
+
+```
+
+
+```{r}
+tapply(O_Data1$deliT,O_Data1$product_category_name_english,mean) %>%sort %>% head(20)#各商品運送時間(平均日)(前20)
+tapply(O_Data1$deliT,O_Data1$product_category_name_english,mean) %>%sort %>% tail(20)#各商品運送時間(平均日)(後20)
+
+sd(O_Data1$deliT) #各商品運送標準差
+summary(tapply(O_Data1$deliT,O_Data1$product_category_name_english,mean)) #各商品運送時間(平均日)
+
+```
+
+```{r}
+tapply(O_Data1$revT,O_Data1$product_category_name_english,mean) %>%sort %>% head(20)#各商品回復時間(平均日)(前20)
+tapply(O_Data1$revT,O_Data1$product_category_name_english,mean) %>%sort %>% tail(20)#各商品回復時間(平均日)(後20)
+
+sd(O_Data1$revT) #全部商品的回覆標準差
+summary(tapply(O_Data1$revT,O_Data1$product_category_name_english,mean))#全部商品的回覆總平均
+```
+
+```{r}
+group_by(O_Data1,review_score)
+tapply(O_Data1$deliT,O_Data1$review_score,mean)#星等的運送時間
+
+tapply(O_Data1$revT,O_Data1$review_score,mean)#星等的回復時間
+
+```
+
+
+
+**Olist集群分析**
+
+
+```{r}
+###資料
+Cust = OCD
+geo = OGD
+order.item = OOID
+order.payments = OOPD
+order.review = OORD
+order.status = OOD
+product = OPD
+sellers = OSD
+category = PCNT 
+###合併資料
+####經緯度調整
+geo$geolocation_lat<-round(geo$geolocation_lat,3)
+geo$geolocation_lng<-round(geo$geolocation_lng,3)
+n_distinct(geo$geolocation_city) ###8010城市
+
+###日期格式轉換
+order.status$order_approved_at<-strptime(order.status$order_approved_at,format="%Y-%m-%d %H:%M:%S")
+order.status$order_purchase_timestamp<-strptime(order.status$order_purchase_timestamp,format="%Y-%m-%d %H:%M:%S")
+order.status$order_delivered_carrier_date<-strptime(order.status$order_delivered_carrier_date,format="%Y-%m-%d %H:%M:%S")
+order.status$order_delivered_customer_date<-strptime(order.status$order_delivered_customer_date,format="%Y-%m-%d %H:%M:%S")
+order.status$order_estimated_delivery_date<-strptime(order.status$order_estimated_delivery_date,format="%Y-%m-%d %H:%M:%S")
+order.item$shipping_limit_date<-strptime(order.item$shipping_limit_date,format="%Y-%m-%d %H:%M:%S")
+
+###order.id 併
+####訂單合併 
+Z <- order.item[,c(1,2,3,4,6,7)] %>%
+  group_by(order_id,product_id,seller_id) %>%
+  summarise( 
+    order_item = n(),
+    price=sum(price),
+    freight_value=sum(freight_value))
+
+###將相同訂單且相同品項的資料合併
+table(duplicated(Z[,c(1,2,3)])) ###全不相同
+
+####合併所需資料
+Z1 <- merge(Z,sellers,by="seller_id",all.x=T) ##合併 seller 
+Z2 <- merge(Z1, order.status, by="order_id",all.x=T) ##合併order status 
+n_distinct(Z2$customer_id) ##98666 
+n_distinct(Z2$order_id) ##98666
+Z3 <- merge(Z2, Cust, by="customer_id",all.x=T) ###合併顧客
+
+####取評論平均
+R <- order.review %>%
+  group_by(order_id) %>%
+  summarise( 
+    review_score=mean(review_score))
+Z4 <- merge(Z3, R, by="order_id",all.x=T)
+
+#####新增顧客等待時間
+Z4 <- merge(Z3, R, by="order_id",all.x=T)
+Z4 <- merge(Z4, product, by="product_id")
+Z4 <- merge(Z4, category, by="product_category_name", all.x=T)
+Z4$delievertime <- difftime(Z4$order_delivered_customer_date,Z4$order_purchase_timestamp,units="days") %>% round()
+
+```
+
+#### 品類管理
+
+```{r}
+###品類管理
+
+Z4[,-c(13:17)] %>% group_by(product_category_name_english) %>% 
+  summarise(n=n(),time=mean(na.omit(delievertime)),maxtime=max(na.omit(delievertime)),
+            mintime=min(na.omit(delievertime)),
+            score=mean(review_score),money=mean(price),
+            max=max(price),min=min(price),seller=n_distinct(seller_id),
+            customer=n_distinct(customer_id),weight=mean(product_weight_g))-> P 
+
+
+###品類分群 k-means
+set.seed(111)
+P$grp = kmeans(scale(P[,c(2,6,7,10,11)]),3)$cluster
+
+
+###每一類的平均
+P %>% group_by(grp) %>% summarize(n = mean(n), m = mean(money), score = mean(score), 
+                                   customer=mean(customer), seller=mean(seller))
+
+#### 視覺化各分群狀況
+P %>% ggplot(aes(x=money, y=score, col=as.factor(grp))) + geom_point(size=5, alpha=0.3)
+P %>% ggplot(aes(x=n, y=score, col=as.factor(grp))) + geom_point(size=5, alpha=0.3)
+P %>% ggplot(aes(x=n, y=score, col=as.factor(grp))) + geom_point(size=5, alpha=0.3)
+P %>% ggplot(aes(x=customer, y=seller, col=as.factor(grp))) + geom_point(size=5, alpha=0.3)
+
+####### 3群特性
+#  主力群類別 seller customer 最多 平均星等也高
+#  金牛群類別 貢獻金額高 且顧客平均星等也高 但顧客與賣家數量少
+#  需加強群類別 平均星等低 需要加強管理買家
+
+
+###觀看各群的變化，動態泡泡圖
+PZ4 <- merge(P[,c(1,13)],Z4,by="product_category_name_english")
+str(PZ4)
+
+PZ4$order_approved_at<-as.POSIXct(PZ4$order_approved_at,format="%Y-%m-%d %H:%M:%S")
+PZ4$order_purchase_timestamp<-as.POSIXct(PZ4$order_purchase_timestamp,format="%Y-%m-%d %H:%M:%S")
+PZ4$order_delivered_carrier_date<-as.POSIXct(PZ4$order_delivered_carrier_date,format="%Y-%m-%d %H:%M:%S")
+PZ4$order_delivered_customer_date<-as.POSIXct(PZ4$order_delivered_customer_date,format="%Y-%m-%d %H:%M:%S")
+PZ4$order_estimated_delivery_date<-as.POSIXct(PZ4$order_estimated_delivery_date,format="%Y-%m-%d %H:%M:%S")
+
+str(PZ4)
+X =  PZ4 %>% rename(
+    time = order_purchase_timestamp, 
+    score = review_score) %>% 
+  mutate(                                   # cut timestamp into quarter    
+    quarter = as.Date(cut(time, "quarter"))
+    ) %>% group_by(grp, product_category_name_english, quarter) %>%  
+  summarise(                            # summarise by category & quarter
+    itemsSold = sum(order_item),                     
+    totalRev = sum(price),
+    avgPrice = mean(price),
+    avgScore = mean(score),
+    noProduct = n_distinct(product_id),
+    noCustomer = n_distinct(customer_id),
+    noSeller = n_distinct(seller_id),
+    delievertime = mean(na.omit(delievertime))
+  ) %>% arrange(grp,product_category_name_english,quarter)  
+
+n_distinct(X$product_category_name_english)
+X[-(497:504),] -> X
+```
+
+```{r}
+X2 = subset(X, quarter >= as.Date("2017-04-01"))
+table(X2$product_category_name_english,X2$quarter) %>% {rowSums(.)==7} %>% names 
+X2[-(which(X2$delievertime == "NaN")),] -> X2  ###刪除delieverytime缺職row
+as.numeric(X2$delievertime) -> X2$delievertime
+```
+
+
+```{r results='asis', tidy=FALSE, eval=F}
+plot( gvisMotionChart( 
+  X2, "product_category_name_english" , "quarter", 
+  options=list(width=800, height=600) ))
+
+```
+#### 運送時間熱圖
+```{r}
+Z4$order_approved_at<-as.POSIXct(Z4$order_approved_at,format="%Y-%m-%d %H:%M:%S")
+Z4$order_purchase_timestamp<-as.POSIXct(Z4$order_purchase_timestamp,format="%Y-%m-%d %H:%M:%S")
+Z4$order_delivered_carrier_date<-as.POSIXct(Z4$order_delivered_carrier_date,format="%Y-%m-%d %H:%M:%S")
+Z4$order_delivered_customer_date<-as.POSIXct(Z4$order_delivered_customer_date,format="%Y-%m-%d %H:%M:%S")
+Z4$order_estimated_delivery_date<-as.POSIXct(Z4$order_estimated_delivery_date,format="%Y-%m-%d %H:%M:%S")
+
+###星等和運送時間關係
+Z4 %>% ggplot(aes(x=as.factor(round(as.numeric(review_score))),y=round(delievertime)))+
+    geom_boxplot()+xlab("review_score")+ylab("delievery_time")
+
+#####運送時間越長會些微影響星等評論
+mean(na.omit(Z4$delievertime)) ####整體訂單平均運送時間約13天
+
+######買家週別至賣家週別的運送時間
+Z4 %>% group_by(seller_state,customer_state)  %>%
+  summarise(delievertime = mean(na.omit(delievertime)),
+            n=n()) -> D
+
+### make state matrix
+mx = xtabs(delievertime ~ seller_state + customer_state, D ) 
+
+###平均時間
+hist(mx, main=range(mx))
+
+###熱圖製作 ###哪些州別間的運送時間大於20天 可以改進
+mx %>%  as.data.frame.matrix > 20 -> mx1
+ifelse(mx1=="TRUE",0,1) %>% 
+  d3heatmap(col=colorRamp(c('red','orange')))
+
+
+
+```
+
+
+
+

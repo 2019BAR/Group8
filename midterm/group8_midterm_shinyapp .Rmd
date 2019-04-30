@@ -1,0 +1,333 @@
+---
+title: "期中競賽"
+output: 
+  flexdashboard::flex_dashboard:
+    logo: olist.png
+    theme: default 
+    orientation: columns
+    social: menu
+    source_code: embed
+runtime: shiny
+---
+
+```{r}
+library(shinyWidgets); library(flexdashboard); library(pwr); library(dplyr); library(d3heatmap); library(DT)
+```
+
+```{r}
+complete2<-data.table::fread("C:/Users/Sean/Desktop/MBA/R Class/brazilian-ecommerce/complete2.csv",data.table = F,encoding = "UTF-8")
+
+complete2_OORD_merge<-data.table::fread("C:/Users/Sean/Desktop/MBA/R Class/brazilian-ecommerce/complete2_OORD_merge.csv",data.table = F,encoding = "UTF-8")
+
+OGD=data.table::fread("C:/Users/Sean/Desktop/MBA/R Class/brazilian-ecommerce/olist_geolocation_dataset.csv",data.table = F,encoding = "UTF-8")
+
+OORD=data.table::fread("C:/Users/Sean/Desktop/MBA/R Class/brazilian-ecommerce/olist_order_reviews_dataset.csv",data.table = F,encoding = "UTF-8")
+
+OPD=data.table::fread("C:/Users/Sean/Desktop/MBA/R Class/brazilian-ecommerce/olist_products_dataset.csv",data.table = F,encoding = "UTF-8")
+
+region_category=OGD[!duplicated(OGD$geolocation_state),]$geolocation_state
+review_score=OORD[!duplicated(OORD$review_score),]$review_score
+
+product_category_name=OPD[!duplicated(OPD$product_category_name),]$product_category_name
+
+complete2_OORD_merge[,1:2]=NULL
+
+OORD_OOD_OOID_OPD_merge_hot=data.table::fread("C:/Users/Sean/Desktop/MBA/R Class/brazilian-ecommerce/OORD_OOD_OOID_OPD_merge_hot.csv",data.table = F,encoding = "UTF-8")
+
+five_star_rate_permonth=data.table::fread("C:/Users/Sean/Desktop/MBA/R Class/brazilian-ecommerce/five_star_rate_permonth.csv",data.table = F,encoding = "UTF-8")
+
+OPD_PCNT_merge=data.table::fread("C:/Users/Sean/Desktop/MBA/R Class/brazilian-ecommerce/OPD_PCNT_merge.csv",data.table = F,encoding = "UTF-8")
+```
+
+```{r}
+payment_type_count = data.frame(C = c(3, 1529, 5775, 19784, 76795), D = c('not_defined','debit_card','voucher','boleto','credit_card'))
+
+payment_type_count = payment_type_count[order(payment_type_count$C, decreasing = TRUE),]
+
+myLabel1 = as.vector(payment_type_count$D) 
+
+myLabel1 = paste(myLabel1, "(", round(payment_type_count$C / sum(payment_type_count$C) * 100, 2), "%)        ", sep = "")   
+```
+
+```{r}
+OORD$review_creation_date<-as.POSIXct(OORD$review_creation_date,format="%Y-%m-%d %H:%M:%S")
+
+five_star_rate_permonth<-merge(OORD%>%group_by(month=format(review_creation_date,"%Y-%m"),review_score)%>%count(),OORD%>%group_by(month=format(review_creation_date,"%Y-%m"))%>%count(),by="month")
+
+five_star_rate=five_star_rate_permonth$n.x/five_star_rate_permonth$n.y
+```
+
+```{r}
+review_score_count = data.frame(A = c(11858, 3235, 8287, 19200, 57420), B = c('一顆星','二顆星','三顆星','四顆星','五顆星'))
+
+review_score_count = review_score_count[order(review_score_count$A, decreasing = TRUE),]   
+
+myLabel = as.vector(review_score_count$B)   
+
+myLabel = paste(myLabel, "(", round(review_score_count$A / sum(review_score_count$A) * 100, 2), "%)        ", sep = "")
+```
+
+```{r}
+library(tidyverse)
+library(Imap)   
+
+dist_list <- list()
+
+for (i in 1:nrow(complete2)) {dist_list[[i]] <- gdist(lon.1 = complete2$selllng[i], lat.1 = complete2$selllat[i], lon.2 = complete2$custlng[i], lat.2 = complete2$custlat[i], units="miles")}
+
+complete2$distbtwn<-as.integer(dist_list)
+NumAttr<- subset(complete2,select = c(distbtwn,price,freight_value,product_name_lenght,product_description_lenght,product_photos_qty,product_weight_g,payment_value,payment_installments))
+
+library(maps)
+Brazil<-map_data("world")%>%filter(region=="Brazil")
+OGD = OGD[OGD$geolocation_lat <= 5.27438888,]
+OGD = OGD[OGD$geolocation_lng >= -73.98283055,]
+OGD = OGD[OGD$geolocation_lat >= -33.75116944,]
+OGD = OGD[OGD$geolocation_lng <=  -34.79314722,]
+complete2 = complete2[complete2$selllat <= 5.27438888,]
+complete2 = complete2[complete2$custlat <= 5.27438888,]
+```
+
+公司介紹
+=====================================
+
+Column {data-width=50%}
+-------------------------------------
+    
+### 了解Olist歷史 {data-height=100%}
+
+<iframe width="100%" height="100%"  frameborder="0" src="http://www.youtube.com/embed/z01QmZyvhes?start=1"  allowfullscreen></iframe>
+
+
+Column {data-width=50%}
+-------------------------------------
+### 關於Olist {data-height=10%}
+Olist是市場內的一個很棒的商店。它是巴西主要電子商務中心最大的百貨商店。此外，我們通過單一合同以完全簡單的方式將微型，中小型企業（SMB）連接到這些關鍵市場。到目前為止，我們已經有超過3,400名店主在大型門戶網站上銷售，如Americanas，Ponto Frio，Walmart，Casas Bahia，Submarino，Mercado Livre等。Olist的想法來自我們團隊在500 Startups的六個月期間 -這是矽谷的主要加速器。我們從那裡回來加速增長，因此我們不斷投資於新人才的搜索和培訓，以形成一支高績效的專業團隊。
+
+### Olist平台特色{data-height=90%}
+Olist (零售平台)
+
+a.願景：
+
+實現夢想，滿足人們的消費需求，節省時間和金錢，成為巴西最好的零售公司。
+
+b.公司目標：
+
+(1)被顧客視為最佳購買選擇
+
+(2)被股東/投資者視為該細分市場的最佳回報
+
+(3)被員工認為是職業發展的最佳選擇
+
+(4)被供應商視為最佳分銷渠道
+
+(5)被社會視為具有社會和生態責任感的公司
+
+c.Olist的差異
+
+對賣方
+
+(1)在銷售渠道中享有很高的聲譽，可直接影響廣告的可見度。 
+
+(2)市場情報會評估提供報價的最佳方式，以增加銷售機會。
+
+(3)運營儀表中可以獲得有關產品，訂單，庫存和性能的所有數據和統計信息。
+
+(4)獨特的合約，允許在該國的主要市場銷售。 
+
+(5)產品，訂單，財務，物流和SAC的集中管理。
+
+(6)使用所有消費者數據直接在平台上發布和打印訂單運輸標籤。
+
+對買方
+
+(1)自由市場，無需離開平台即可消除買家的所有疑慮。方便轉換訂單。
+
+(2)嚴格把關賣家，提供好品質的平台。
+
+商品種類與付款方式分析
+=====================================
+
+Column {data-width=100%}
+-------------------------------------
+
+### 前十名商品種類長條圖 {data-height=100%}
+```{r}
+renderPlot(
+  barplot(table(OPD_PCNT_merge$product_category_name_english)%>%sort()%>%tail(10))
+)
+```
+
+### 付款方式圓餅圖  {data-height=100%}
+```{r}
+renderPlot(
+  ggplot(payment_type_count, aes(x = "", y = C, fill = D)) + 
+  geom_bar(stat = "identity", width = 1) +    
+  coord_polar(theta = "y") + 
+  labs(x = "", y = "", title = "") + 
+  theme(axis.ticks = element_blank()) + 
+  theme(legend.title = element_blank(), legend.position = "top") + 
+  scale_fill_discrete(breaks = payment_type_count$D, labels = myLabel1) + 
+  theme(axis.text.x = element_blank())+theme(panel.grid=element_blank()) +    theme(panel.border=element_blank())
+)
+```
+
+買家評分分析
+=====================================
+
+Row {data-width=1000%}
+-------------------------------------
+
+### 總評分圓餅圖 {data-width=500}
+```{r}
+renderPlot(
+  ggplot(review_score_count, aes(x = "", y = A, fill = B)) + 
+  geom_bar(stat = "identity", width = 1) +    
+  coord_polar(theta = "y") + 
+  labs(x = "", y = "", title = "") + 
+  theme(axis.ticks = element_blank()) + 
+  theme(legend.title = element_blank(), legend.position = "top") + 
+  scale_fill_discrete(breaks = review_score_count$B, labels = myLabel) + 
+  theme(axis.text.x = element_blank())+theme(panel.grid=element_blank()) +    theme(panel.border=element_blank())
+)
+
+```
+
+### 每月各評分率折線圖  {data-width=500}
+```{r}
+renderPlot(
+  ggplot(five_star_rate_permonth, aes(x = month, y = five_star_rate,group=review_score,color=review_score)) + geom_line() + geom_point()
+)
+```
+
+賣家地區分布
+=====================================
+
+Inputs {.sidebar data-width=500%}
+---------------------------------
+
+```{r}
+pickerInput(
+  inputId = "myPicker",
+  label = "Region select",
+  choices = region_category,
+  selected = "SP",
+  options = list(
+     `actions-box` = TRUE,
+      #size = 10,
+     `selected-text-format` = "count > 3"
+   ),
+  multiple = TRUE
+)
+```
+
+Column {data-width=100%}
+-------------------------------------
+
+### Graph
+```{r}
+selectstate=function(myPicker){
+  for(i in 2:length(myPicker)){
+    myPicker[i]=paste(myPicker[i-1],myPicker[i],sep="|")
+  }
+  return(myPicker[length(myPicker)])
+}
+
+renderPlot(
+  ggplot() + geom_polygon(data = Brazil, aes(x=long, y = lat, group = group), fill="black")+ geom_point(data=complete2_OORD_merge%>%filter(grepl(selectstate(input$myPicker),complete2_OORD_merge$seller_state)==T),aes(x=selllng,y=selllat,color=seller_state),size=0.2)
+)
+```
+
+買家地區分布
+=====================================
+
+Inputs {.sidebar data-width=500%}
+---------------------------------
+
+```{r}
+pickerInput(
+  inputId = "myPicker2",
+  label = "Region select",
+  choices = region_category,
+  selected = "SP",
+  options = list(
+     `actions-box` = TRUE,
+      #size = 10,
+     `selected-text-format` = "count > 3"
+   ),
+  multiple = TRUE
+)
+```
+
+Column {data-width=100%}
+-------------------------------------
+
+### Graph
+```{r}
+renderPlot(
+  ggplot() + geom_polygon(data = Brazil, aes(x=long, y = lat, group = group), fill="black")+ geom_point(data=complete2_OORD_merge%>%filter(grepl(selectstate(input$myPicker2),complete2_OORD_merge$customer_state)==T),aes(x=custlng,y=custlat,color=customer_state),size=0.2)
+)
+```
+
+各評分買家分布
+=====================================
+
+Inputs {.sidebar data-width=500%}
+---------------------------------
+
+```{r}
+pickerInput(
+  inputId = "myPicker3",
+  label = "review_score",
+  choices = c(1,2,3,4,5),
+  selected = "1",
+  options = list(
+     `actions-box` = TRUE,
+      #size = 10,
+     `selected-text-format` = "count > 3"
+   ),
+  multiple = TRUE
+)
+```
+
+Column {data-width=100%}
+-------------------------------------
+
+### Graph
+```{r}
+renderPlot(
+  ggplot() + geom_polygon(data = Brazil, aes(x=long, y = lat, group = group), fill="black")+ geom_point(data=complete2_OORD_merge%>%filter(grepl(selectstate(input$myPicker3),complete2_OORD_merge$review_score)==T),aes(x=custlng,y=custlat,color=review_score),size=0.2)
+)
+
+```
+
+各品類買家分布
+=====================================
+
+Inputs {.sidebar data-width=500%}
+---------------------------------
+
+```{r}
+pickerInput(
+  inputId = "myPicker4",
+  label = "product_category_name",
+  choices = product_category_name,
+  selected = "cama_mesa_banho",
+  options = list(
+     `actions-box` = TRUE,
+      #size = 10,
+     `selected-text-format` = "count > 3"
+   ),
+  multiple = TRUE
+)
+```
+
+Column {data-width=100%}
+-------------------------------------
+
+### Graph
+```{r}
+renderPlot(
+  ggplot() + geom_polygon(data = Brazil, aes(x=long, y = lat, group = group), fill="black")+ geom_point(data=complete2_OORD_merge%>%filter(grepl(selectstate(input$myPicker4),complete2_OORD_merge$product_category_name)==T),aes(x=custlng,y=custlat,color=customer_state),size=0.2)
+)
+```
