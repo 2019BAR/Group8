@@ -1,0 +1,141 @@
+---
+title: UNIT09D 案例：航空公司的市場區隔
+author: 中山大學管理學院 卓雍然
+date: "`r Sys.time()`"
+output: 
+  html_document:
+    highlight: pygments
+    theme: flatly
+    css: style.css
+---
+
+```{r results='hide', message=FALSE, warning=FALSE, echo=F}
+# 這些程式碼設定網頁的格式，並安裝、載入一些基本的套件，請大家不要去改動<br>
+rm(list=ls(all=T))
+knitr::opts_chunk$set(comment = NA)
+knitr::opts_knit$set(global.par = TRUE)
+par(cex=0.8)
+options(scipen=20, digits=5, width=80)
+if(!require(pacman)) install.packages("pacman")
+```
+<br>
+
+<p class="wwl">
+<span style="font-size:24px">`r "\U1F4A1"` 學習重點：</span><br>
+&emsp; ■ 集群分析的基本觀念<br>
+&emsp; ■ 距離矩陣：Distance Matrix<br>
+&emsp; ■ 層級式集群分析：Hierarchical Cluster Analysis<br>
+&emsp; ■ 樹狀圖(Dendrogram)的判讀<br>
+&emsp; ■ 依據樹狀圖決定要分多少群<br>
+&emsp; ■ 以群組平均值檢視各族群的屬性<br>
+</p class="wwl">
+
+<hr>
+
+```{r results='hide', message=FALSE, warning=FALSE}
+pacman::p_load(dplyr, ggplot2)
+```
+<br>
+
+### 【A】航空公司顧客資料集
+
+```{r}
+A = read.csv('data/AirlinesCluster.csv')
+summary(A)
+```
+
++ Balance: 可用里程數
++ QualMiles: 可用高等里程數
++ BonusMiles: 過去12個月非飛行里程數
++ BonusTrans: 過去12個月非飛行交易次數
++ FlightMiles: 過去12個月飛行里程數
++ FlightTrans: 過去12個月飛行交易次數
++ DaysSinceEnroll: 會員年資 (天)
+
+
+<br><br>
+###  資料常態化  
+
+
+```{r}
+AN = scale(A) %>% data.frame
+```
+
+
+###  層級式集群分析結果與討論
+
+
+層級式集群分析
+```{r}
+hc = hclust(dist(AN, method="euclidean"), method='ward.D')
+```
+
+
+分割群組 
+```{r}
+kg = cutree(hc, k=5)
+table(kg)
+```
+繪圖
+```{r}
+par(cex=0.8)
+split(AN,kg) %>% sapply(colMeans) %>% barplot(beside=T,col=rainbow(7))
+legend('topright',legend=colnames(A),fill=rainbow(7))
+```
+
+<br><br>
+
+<p class="qiz">
+<span style="font-size:24px">`r "\U1F5FF"` 討論問題：</span><br>
+
+
+&emsp; ■ 請你們為這五個族群各起一個名稱<br>
+```{r}
+#第一群我們稱其為 "沉睡的顧客"，在此群顧客會員年數非常高，但其使用的比率為負，幾乎是要流失的狀態。
+
+#第二群我們稱之為 "新VIP顧客"，表此會員優惠吸引力高，使此群消費力高且受吸引，成為新會員。
+
+#第三群我們稱之為 "合作聯盟相關顧客"，會員內主要累積相關合作聯盟的里程來轉換飛機里程。
+
+#第四群我們稱之為 "合作聯盟潛在顧客"，會員只使用其他里程方式，並未使航空公司受影響。
+
+#第五群我們稱之為 "非航空公司客群"，有可能為其他競爭者的客群。
+
+```
+
+&emsp; ■ 請你們為這五個族群各設計一個行銷策略<br>
+```{r}
+#針對"沉睡的顧客"，航空公司對內需檢討服務的流程是否有瑕疵，使這群人不在使用此航空；對外則針對這群使用"舊會員，新禮包"的方式給予這群特定會員獨特的里程或其他優惠，讓沉睡會員回流。
+
+#針對"新VIP顧客"，航空公司需要注意此類客群的黏著度，基本會員有生日or基本優惠，並可推出VIP制度，達成一定消費便能得到比基本會員有更多優惠。
+
+#針對"合作聯盟相關顧客"，可被歸類為基本會員中較多使用里程兌換飛機的客群，因此需從吸引他們消費，若能在服務時能讓服務人員知道這些客群，透過良好服務體驗，與特別的飛行消費優惠券，來增加他們的消費。
+
+#針對"合作聯盟潛在顧客"，可跟合作聯盟的企業(EX:飯店..)推出組合優惠(EX:累積飯店訂購次數能同時以一定比例累積飛機里程)，吸引合作聯盟內消費者加入。
+
+#針對"非航空公司客群"，新增新會員的入會優惠與入會禮，吸引更多競爭者的會員轉移。
+
+```
+
+&emsp; ■ 統計上最好的分群也是實務上最好的分群嗎<br>
+```{r}
+#統計上是一數據分出的併來分析客群，然而實務上客群習性複雜，因此需要使用統計分群嘗試許多可能性，才能讓客群分析更完整。
+```
+
+
+&emsp; ■ 除了考慮群間和群間距離之外，實務上的分群通常還需要考慮那些因數？<br>
+```{r}
+#要考慮要探究什麼或從中想得到什麼才會讓集群分析更有意義。
+```
+
+</p class="qiz">
+
+<br><br><br><hr>
+
+
+
+
+
+
+
+
