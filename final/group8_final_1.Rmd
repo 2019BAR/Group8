@@ -1,0 +1,550 @@
+---
+title: 期末專案競賽 -- Ta Feng 雜貨店
+author: 第八組, R語言程式與實務
+date: "`r Sys.time()`"
+output:
+  html_document:
+    highlight: pygments
+    theme: flatly
+    css: style.css
+---
+<br>
+
+### 資料彙整流程
+
+<center>
+
+![Fig-1: Pata Preparation](fig/aggregation.jpg)
+
+</center>
+
+<hr>
+
+### 1. 交易項目計錄：`Z`
+
+```{r echo=T, message=F, cache=F, warning=F}
+rm(list=ls(all=T))
+Sys.setlocale("LC_TIME","C")
+pacman::p_load(magrittr, readr, caTools, ggplot2, dplyr)
+```
+
+##### 1.1 讀進整理好的資料
+```{r}
+load("C:/Users/Jowett Jhang/Desktop/2019RPB/Group8/datafinal/tf0.rdata")
+#asset為類似成本
+```
+
+
+
+##### 新增變數X
+
+```{r}
+
+A <- A0
+X <- X0
+Z <- Z0
+
+Z = subset(Z, date < as.Date("2001-02-1"))    # 618212
+
+Z$grossmargin = (Z$price-Z$cost)/Z$price ###毛利率
+
+```
+
+
+```{r}
+X = Z %>% group_by(tid) %>% summarise(
+ date = date[1],  # 交易日期
+ cust = cust[1],  # 顧客 ID
+ age = age[1],    # 顧客 年齡級別
+ area = area[1],  # 顧客 居住區別
+ items = n(),  # 交易項目(總)數
+  pieces = sum(qty),          # 產品(總)件數
+  total = sum(price),         # 交易(總)金額
+  gross = sum(price - cost),   # 毛利
+ month = months(date), ##交易月份
+ spec = sum(grossmargin*qty)/sum(qty), ###該筆訂單平均毛利率
+ n_margin= sum(as.numeric(grossmargin<0)*qty)/sum(qty), ###該筆訂單負毛利率商品平均數量
+ weekday = factor(weekdays(date),levels = c("Monday", "Tuesday", "Wednesday", "Thursday","Friday","Saturday","Sunday")), ###星期數
+  ncategory = n_distinct(cat),
+ nproduct = n_distinct(prod)
+ ) %>% data.frame  ###88387
+
+
+
+sapply(X[,c(6:9)], quantile, prob=c(.99, .999, .9995))
+
+X = subset(X, items<=60 & pieces<=85 & total<= 9500)
+
+
+tapply(X$total,X$month,sum)
+tapply(X$gross,X$month,mean)
+
+
+nrow(X) ### 88387 -> 88228
+```
+
+##### 敘述統計
+
+```{r fig.height=3, fig.width=7.2}
+par(cex=0.8)
+hist(X$date, "months", las=2, freq=T, xlab="", main="No. Transaction by Month")
+```
+
+```{r}
+n_distinct(X$cust)           # 顧客數 28569
+```
+
+##### 新增變數A
+
+```{r}
+d0 = max(X$date)
+A = group_by(X, cust) %>% summarise(
+  r = 1 + as.integer(difftime(d0, max(date), units="days")), # recency
+  s = 1 + as.integer(difftime(d0, min(date), units="days")), # seniority
+  f = n(),            # frquency
+  m = mean(total),    # monetary
+  month1f = sum(month == "November"),
+  month2f = sum(month == "December"),
+  month3f = sum(month == "January"),
+  weeksum = sum(weekday!="Saturday" & weekday!="Sunday"),
+  weekendsum = sum(weekday=="Saturday")+sum(weekday=="Sunday"),
+  frise = isTRUE(month2f - month1f > 0 && month3f - month2f > 0),
+  loyal = isTRUE(month1f > 0  &&  month2f > 0  &&  month3f>0),
+  month1ft = ifelse(month1f>0,1,0),
+  month2ft = ifelse(month2f>0,1,0),
+  month3ft = ifelse(month3f>0,1,0),
+  regular = isTRUE(month1ft+month2ft+month3ft >= 2),
+  realspec = sum(spec*pieces)/sum(pieces),
+  realn_margin = sum(n_margin*pieces)/sum(pieces),
+  rev = sum(total),   # total revenue contribution
+  raw = sum(gross),   # total gross profit contribution
+  age = age[1],   # age group
+  area =area[1],  # area code
+  mean_cat = mean(ncategory),
+  mean_prod = mean(nproduct)
+) %>% data.frame    ##28569 
+
+nrow(A)
+```
+
+
+
+##### 顧客資料摘要
+```{r}
+summary(A)
+A$regular = ifelse(A$regular == "TRUE",1,0)
+```
+
+##### 將顧客分群
+
+```{r}
+set.seed(111)
+A$grp = kmeans(scale(A[,c(4,5,16,17)]),4)$cluster
+table(A$grp)  # 族群大小
+```
+
+***分群結果敘述統計**
+
+```{r}
+A %>% ggplot(aes(x=m, y=realspec, col=as.factor(grp))) + geom_point(size=5, alpha=0.3)
+```
+
+```{r}
+A %>% ggplot(aes(x=regular, y=realspec, col=as.factor(grp))) + geom_point(size=5, alpha=0.3)
+```
+
+```{r}
+A %>% ggplot(aes(x=age, y=m, col=as.factor(grp))) + geom_point(size=5, alpha=0.3)
+```
+
+
+```{r}
+A %>% ggplot(aes(x=f, y=m, col=as.factor(grp))) + geom_point(size=5, alpha=0.3)
+```
+
+```{r}
+##製作目標變數 amount 購買金額
+feb01 = as.Date("2001-02-01")
+feb = filter(X0, date>= feb01) %>% group_by(cust) %>% 
+  summarise(amount = sum(total))  # 16900
+```
+
+##### The Target for Regression - `A$amount`
+Simply a Left Joint
+```{r}
+A = merge(A, feb, by="cust", all.x=T)
+```
+
+
+##### The Target for Classification - `A$buy`
+```{r}
+### 製作目標變數 buy 是否有購買 
+A$buy = !is.na(A$amount) ### amount 不為0 
+summary(A)  #Summary of the Dataset
+```
+
+
+
+
+
+##### Contest Dataset
+```{r}
+###類別模型 預測會不會購買
+X = subset(X, cust %in% A$cust & date < as.Date("2001-02-01"))
+Z = subset(Z, cust %in% A$cust & date < as.Date("2001-02-01"))
+set.seed(2018); spl = sample.split(A$buy, SplitRatio=0.7)
+c(nrow(A), sum(spl), sum(!spl))        ## Training  ##Testing
+```
+
+
+```{r fig.height=3, fig.width=7}
+cbind(A, spl) %>% filter(buy) %>% ###將剛剛SPL分完的資料框併回去，然後挑選有購買的(buy=T)
+  ggplot(aes(x=log(amount))) + geom_density(aes(fill=spl), alpha=0.5)
+###畫圖觀察，分完後的資料中，購買的比例是不是差不多，因為這樣模型會比較準
+```
+
+
+
+```{r}
+##數量模型，預測買多少錢，從A資料中找出有購買的人
+A2 = subset(A, buy) %>% mutate_at(c("m","rev","amount"), log10) ##將A中有購買的分割出來，後面的向量裡變數取log
+n = nrow(A2)
+set.seed(2018); spl2 = 1:n %in% sample(1:n, round(0.7*n))
+c(nrow(A2), sum(spl2), sum(!spl2))
+            ##Training ##Testing
+
+```
+
+
+
+```{r fig.height=3, fig.width=7}
+cbind(A2, spl2) %>% 
+  ggplot(aes(x=amount)) + geom_density(aes(fill=spl2), alpha=0.5)
+
+###畫圖觀察，分完後的資料中，購買的比例是不是差不多，因為這樣模型會比較準
+```
+
+##### Spliting for Classification 
+```{r}
+str(A$grp)
+A$grp <- as.factor(A$grp)
+TR = subset(A,spl)
+TS = subset(A,!spl)
+```
+
+
+### Classification Model
+
+```{r}
+###邏輯式 預測會不會來買
+glm1 = glm(buy ~ ., TR[,c(2:5,11,12,16:17,20:25,27)], family=binomial()) 
+summary(glm1)
+pred = predict(glm1, type="response")
+pred1 =  predict(glm1, TS, type="response")
+cm = table(actual = TS$buy, predict = pred1 > 0.5); cm  # 混淆舉陣
+acc.ts = cm %>% {sum(diag(.))/sum(.)}; acc.ts          # 0.69998 -> 0.697
+colAUC(pred1, TS$buy)                                   # 0.7556 -> 0.7569
+
+```
+
+```{r}
+#查看大概分群預測分布
+data.frame(y=factor(TR$buy), pred= pred) %>% 
+  ggplot(aes(x=pred, fill=y)) + 
+  geom_histogram(bins=20, col='white', position="stack", alpha=0.5) +
+  ggtitle("Distribution of Predicted Probability (DPP)") +
+  xlab("predicted probability")
+```
+
+
+### Regression Model
+```{r}
+###迴歸式 預測數量（金額） 
+A2 = subset(A, A$buy) %>% mutate_at(c("m","rev","amount"), log10)
+### 先選出實際有購買的 這些才有金額
+TR2 = subset(A2, spl2)
+TS2 = subset(A2, !spl2)
+
+```
+
+
+```{r}
+lm1 = lm(amount ~ .- weeksum - weekendsum - area - frise -month3f, TR2[,c(2:12,16:26)])
+summary(lm1)
+```
+
+
+```{r}
+r2.tr = summary(lm1)$r.sq  ####取出R-square
+SST = sum((TS2$amount - mean(TR2$amount))^ 2)
+SSE = sum((predict(lm1, TS2) -  TS2$amount)^2)
+r2.ts = 1 - (SSE/SST)
+c(r2.tr, r2.ts)  ###0.2854236 0.3054942
+```
+
+**找出第三群混淆矩陣**
+
+```{r}
+#將資料分為是否為第三群，分成兩筆作實驗組與對照組
+str(A$grp)
+A$grp <- as.factor(A$grp)
+
+TR1 = subset(A,grp!=3)
+TS1 = subset(A,grp==3)
+```
+
+```{r}
+
+###邏輯式 預測會不會來買
+glm1 = glm(buy ~ ., TR1[,c(2:5,11,12,16:17,20:24,27)], family=binomial()) 
+summary(glm1)
+pred = predict(glm1, type="response")
+pred1 =  predict(glm1, TS1, type="response")
+cm = table(actual = TS1$buy, predict = pred1 > 0.5); cm  # 混淆舉陣
+acc.ts = cm %>% {sum(diag(.))/sum(.)}; acc.ts          # 0.69998 -> 0.697
+colAUC(pred1, TS1$buy)                                   # 0.7556 -> 0.7569
+
+```
+
+```{r}
+y=TS1$buy
+
+payoff = matrix(c(-52,48,-57,143),2,2)
+payoff
+cutoff = seq(0, 1, 0.01)
+result = sapply(cutoff, function(p) sum(
+  table(factor(y==1, c(F,T)), factor(pred1>p, c(F,T))) # confusion matrix
+  * payoff ))
+i = which.max(result)
+par(cex=0.7, mar=c(4,4,3,1))
+plot(cutoff, result, type='l', col='cyan', lwd=2, main=sprintf(
+  "Optomal Expected Result: $%d @ %.2f",result[i],cutoff[i]))
+abline(v=seq(0,1,0.1),h=seq(-6000,0,100),col='lightgray',lty=3)
+points(cutoff[i], result[i], pch=20, col='red', cex=2)
+```
+
+**找出第三群混淆矩陣**
+
+```{r}
+#將資料分為是否為第四群，分成兩筆作實驗組與對照組
+str(A$grp)
+A$grp <- as.factor(A$grp)
+
+TR3 = subset(A,grp!=4)
+TS3 = subset(A,grp==4)
+```
+
+```{r}
+###邏輯式 預測會不會來買
+glm1 = glm(buy ~ ., TR3[,c(2:5,11,12,16:17,20:24,27)], family=binomial()) 
+summary(glm1)
+pred = predict(glm1, type="response")
+pred1 =  predict(glm1, TS3, type="response")
+cm = table(actual = TS3$buy, predict = pred1 > 0.5); cm  # 混淆舉陣
+acc.ts = cm %>% {sum(diag(.))/sum(.)}; acc.ts          # 0.69998 -> 0.697
+colAUC(pred1, TS3$buy)                                   # 0.7556 -> 0.7569
+
+```
+
+```{r}
+y=TS3$buy
+
+payoff = matrix(c(-5,95,-59,141),2,2)
+cutoff = seq(0, 1, 0.01)
+result = sapply(cutoff, function(p) sum(
+  table(factor(y==1, c(F,T)), factor(pred1>p, c(F,T))) # confusion matrix
+  * payoff ))
+i = which.max(result)
+par(cex=0.7, mar=c(4,4,3,1))
+plot(cutoff, result, type='l', col='cyan', lwd=2, main=sprintf(
+  "Optomal Expected Result: $%d @ %.2f",result[i],cutoff[i]))
+abline(v=seq(0,1,0.1),h=seq(-6000,0,100),col='lightgray',lty=3)
+points(cutoff[i], result[i], pch=20, col='red', cex=2)
+```
+
+
+
+### Prediction
+```{r}
+####用後三個月資料來預測未來一個月
+Z1 = subset(Z0, date >= as.Date("2000-12-01")) 
+
+Z1$grossmargin = (Z1$price-Z1$cost)/Z1$price ###毛利率
+
+X1 = group_by(Z1, tid) %>% summarise(
+ date = date[1],  # 交易日期
+ cust = cust[1],  # 顧客 ID
+ age = age[1],    # 顧客 年齡級別
+ area = area[1],  # 顧客 居住區別
+ items = n(),  # 交易項目(總)數
+  pieces = sum(qty),          # 產品(總)件數
+  total = sum(price),         # 交易(總)金額
+  gross = sum(price - cost),   # 毛利
+ month = months(date), ##交易月份
+ spec = sum(grossmargin*qty)/sum(qty), ###該筆訂單平均毛利率
+ n_margin= sum(as.numeric(grossmargin<0)*qty)/sum(qty), ###該筆訂單負毛利率商品平均數量
+ weekday = factor(weekdays(date),levels = c("Monday", "Tuesday", "Wednesday", "Thursday","Friday","Saturday","Sunday")), ###星期數
+ ncategory = n_distinct(cat),
+ nproduct = n_distinct(prod)
+ ) %>% data.frame  ###87595
+
+
+sapply(X1[,c(6:9)], quantile, prob=c(.99, .999, .9995))
+
+X1 = subset(X1, items<=60 & pieces<=85 & total<= 9000)
+
+nrow(X1) ### 87595 -> 87542
+
+
+d0 = max(X1$date)
+A1 = group_by(X1, cust) %>% summarise(
+  r = 1 + as.integer(difftime(d0, max(date), units="days")), # recency
+  s = 1 + as.integer(difftime(d0, min(date), units="days")), # seniority
+  f = n(),            # frquency
+  m = mean(total),    # monetary
+  month1f = sum(month == "December"),
+  month2f = sum(month == "January"),
+  month3f = sum(month == "February"),
+  weeksum = sum(weekday!="Saturday" & weekday!="Sunday"),
+  weekendsum = sum(weekday=="Saturday")+sum(weekday=="Sunday"),
+  frise = isTRUE(month2f - month1f > 0 && month3f - month2f > 0),
+  loyal = isTRUE(month1f > 0  &&  month2f > 0  &&  month3f>0),
+  month1ft = ifelse(month1f>0,1,0),
+  month2ft = ifelse(month2f>0,1,0),
+  month3ft = ifelse(month3f>0,1,0),
+  regular = isTRUE(month1ft+month2ft+month3ft >= 2),
+  realspec = sum(spec*pieces)/sum(pieces),
+  realn_margin = sum(n_margin*pieces)/sum(pieces),
+  rev = sum(total),   # total revenue contribution
+  raw = sum(gross),   # total gross profit contribution
+  age = age[1],   # age group
+  area =area[1], # area code
+  mean_cat = n_distinct(ncategory),
+  mean_prod = n_distinct(nproduct)
+) %>% data.frame    ##28516 
+
+nrow(A1)
+
+```
+
+####資料分群
+```{r}
+#將後三個月分群
+set.seed(111)
+A1$grp = kmeans(scale(A1[,c(4,5,16,17)]),4)$cluster
+table(A1$grp)  # 族群大小
+```
+
+####分群敘述統計
+```{r}
+A1 %>% ggplot(aes(x=m, y=realspec, col=as.factor(grp))) + geom_point(size=5, alpha=0.3)
+```
+
+
+```{r}
+A1 %>% ggplot(aes(x=regular, y=realspec, col=as.factor(grp))) + geom_point(size=5, alpha=0.3)
+```
+
+####預測
+```{r}
+A1$grp <- as.factor(A1$grp)
+A1$regular <- ifelse(A1$regular == "TRUE",1,0)
+#購買率預測
+A1$Buy = predict(glm1, A1[,c(2:5,11,12,16:17,20:24,25)], type="response")
+Y =predict(glm1, A1[,c(2:5,11,12,16:17,20:24,25)], type="response")
+```
+
+
+```{r}
+A12 = A1 %>% mutate_at(c("m","rev"), log10)
+#購買金額預測
+A1$Rev = 10 ^ predict(lm1, A12[,c(2:12,16:25)])
+
+```
+
+
+```{r fig.height=2.4, fig.width=7.2}
+par(mfrow=c(1,2), cex=0.8)
+hist(A1$Buy)
+hist(log(A1$Rev,10))
+```
+
+***在此假設可能回購機率為0.3**
+***在此假設可能購買金額對數為3**
+
+
+
+
+
+
+##### 5.2 估計顧客終生價值(CLV)
+```{r}
+g = 0.5   # (稅前)獲利率
+N = 5     # 期數 = 5
+d = 0.1   # 利率 = 10%
+A1$CLV = g * A1$Rev * rowSums(sapply(
+  0:N, function(i) (A1$Buy/(1+d))^i ) )
+
+summary(A1$CLV)
+```
+
+```{r fig.height=2.5, fig.width=7.2}
+par(mar=c(2,2,3,1), cex=0.8)
+hist(log(A1$CLV,10), xlab="", ylab="")
+```
+
+
+```{r}
+par(mar=c(3,3,4,2), cex=0.8)
+boxplot(log(CLV)~ grp , A1, main="CLV by Groups")
+
+```
+
+```{r}
+A1$grp=as.numeric(A1$grp)
+sapply(split(A1[,c(4,5,16,17)],A1$grp), colMeans) %>% round(2)
+par(cex=0.8)
+```
+
+
+```{r}
+# 各族群的平均營收貢獻、保留機率、終生價值
+sapply(A1[,24:26], tapply, A1$grp, mean)
+
+tapply(A1$m,A1$grp,mean)
+tapply(A1$mean_cat,A1$grp,mean)
+tapply(A1$mean_prod,A1$grp,mean)
+```
+
+
+
+### 模擬成本與效果的關係
+
+
+##### 使用模擬方法找到最佳策略(參數)
+
+`manipulate()`不能在Rmd直接執行，需要另外開一個R窗格，把以下程式碼Copy過去跑
+```{r eval=F}
+manipulate({
+  do.call(rbind, lapply(seq(5,40,0.5), function(c){
+    p = m*plogis((10/a)*(c-b))
+    A1 %>% mutate(
+      PI = ifelse(ProbRetain<=(1-p), p, 1-ProbRetain) * PredRevenue - c
+    ) %>%
+      group_by(status) %>% summarise(
+        Cost = c,
+        Group.Sz = n(),
+        No.Target = sum(PI>0),
+        AvgROI = mean(PI[PI>0]),
+        TotalROI = sum(PI[PI>0])
+      ) } ) ) %>% 
+    ggplot(aes(x=Cost, y=TotalROI, col=status)) +
+    geom_line(size=1.2) +
+    ggtitle("Cost Effeciency per Segment ")
+},
+m = slider(0.05, 0.25,  0.20, step=0.01),
+a = slider(  10,   30,    20, step=1),
+b = slider(   4,   20,    15, step=1)
+) 
+#增額幅度相同下，S3其實算是沉睡顧客，因此當此類顧客購買利潤高時，將其拉回來可能會有很大的影響
+```

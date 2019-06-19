@@ -1,0 +1,175 @@
+---
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(readr)
+library(magrittr)
+library(pwr)
+library(DT)
+library(ggplot2)
+library(tidyverse)
+library(gcookbook)
+library(d3heatmap)
+library(caTools)
+library(ROCR)
+library(googleVis)
+library(chorddiag)
+cols = colorRamp(c('seagreen','lightyellow','red'))
+```
+
+```{r}
+D<-data.table::fread("C:/Users/Sean/Desktop/ta-feng-grocery-dataset/ta_feng_all_months_merged.csv",data.table = F,encoding = "UTF-8")
+
+D<-D%>% data.frame %>%setNames(c("date","cust","age","area","cat","prod","qty","cost","price"))
+
+D<- data.frame(D,
+                  profit=(D$price-D$cost))
+
+D<- data.frame(D,
+                  profit_margin=(D$profit/D$price))
+```
+
+```{r}
+D$date = as.Date(D$date, format="%m/%d/%Y")
+D$age[is.na(D$age)] = "na"
+D$age = factor(D$age, levels=c(
+  "<25","25-29","30-34","35-39","40-44","45-49","50-54","55-59","60-64",">65","na"), labels=c(
+  "a20","a25","a30","a35","a40","a45","a50","a55","a60","a65","na"
+  )) %>% as.character
+D$area = paste0("d",D$area)
+summary(D)
+```
+
+```{r}
+#處理離群值
+sapply(D[,7:9], quantile, prob=c(.99, .999, .9995))
+D = subset(D, qty<=24 & cost<=3800 & price<=4000) 
+```
+
+```{r}
+#每月各年齡層比率折線圖
+age_rate_permonth<-merge(D%>%group_by(month=format(date,"%Y-%m"),age)%>%count(),D%>%group_by(month=format(date,"%Y-%m"))%>%count(),by="month")
+
+age_rate=age_rate_permonth$n.x/age_rate_permonth$n.y
+
+ggplot(age_rate_permonth, aes(x = month, y = age_rate,group=age,color=age)) + geom_line() + geom_point()
+```
+
+```{r}
+#平均消費金額
+mean(D$price)
+
+#每日毛利折線圖
+profit_perday<-D%>%group_by(day=format(date,"%Y-%m-%d"))%>%summarize(profit_day=sum(profit))
+
+profit_perday$day<-as.POSIXct(profit_perday$day,format="%Y-%m-%d")
+
+ggplot(profit_perday, aes(x = day, y = profit_day)) + geom_line(color='black') + geom_point(color='red')
+```
+
+```{r}
+#年齡比例圓餅圖
+table(D$age)%>%sort()
+
+age_type = data.frame(C = c(20302,24743,27353,30070,53719,66432,99719,140805,151023,181213), D = c("60-64","55-59",">65","<25","50-54","25-29","45-49","30-34","40-44","35-39"))
+
+age_type = age_type[order(age_type$C, decreasing = TRUE),]
+
+myLabel1 = as.vector(age_type$D) 
+
+myLabel1 = paste(myLabel1, "(", round(age_type$C / sum(age_type$C) * 100, 2), "%)        ", sep = "") 
+
+ggplot(age_type, aes(x = "", y = C, fill = D)) + 
+  geom_bar(stat = "identity", width = 1) +    
+  coord_polar(theta = "y") + 
+  labs(x = "", y = "", title = "") + 
+  theme(axis.ticks = element_blank()) + 
+  theme(legend.title = element_blank(), legend.position = "top") + 
+  scale_fill_discrete(breaks = age_type$D, labels =  myLabel1) + 
+  theme(axis.text.x = element_blank())+theme(panel.grid=element_blank()) +    theme(panel.border=element_blank())
+```
+
+```{r}
+#年齡層與地區熱圖
+table(D$age, D$area)
+age_area_heatmap<-table(D$age, D$area) %>% 
+{./rowSums(.)} %>% 
+  as.data.frame.matrix %>% 
+  d3heatmap(F,F,col=colorRamp(c('seagreen','lightyellow','red')))
+age_area_heatmap
+#115南港區
+```
+
+```{r}
+#年齡層與日期熱圖
+table(D$age, D$date)
+age_date_heatmap<-table(D$age, D$date) %>% 
+{./rowSums(.)} %>% 
+  as.data.frame.matrix %>% 
+  d3heatmap(F,F,col=colorRamp(c('seagreen','lightyellow','red')))
+age_date_heatmap
+#2011/1/23除夕，所以在1/21和1/22各年齡層消費高
+```
+
+```{r}
+#平均毛利率
+mean(na.omit(D$profit_margin))
+
+#年齡層的毛利率
+D %>% group_by(age,area)  %>%
+  summarise(profit_margin = mean(na.omit(profit_margin)),
+            n=n()) -> X
+
+# make state matrix
+mx = xtabs(profit_margin ~ age + area, X) 
+
+#平均時間
+hist(mx, main=range(mx))
+
+#熱圖製作，哪些年齡和地區的毛利率大於0.1571
+mx %>%  as.data.frame.matrix > 0.1571 -> mx1
+ifelse(mx1=="TRUE",0,1) %>% 
+  d3heatmap(col=colorRamp(c('red','lightyellow','seagreen')))
+```
+
+```{r}
+#Make a State*Category Matrix
+A = xtabs(profit_margin ~ age + area, D)
+A = A[order(-rowSums(A)),]                # arrange rows and ...
+A = A[,order(-colSums(A))]                # columns in decending order
+A = as(A, "matrix")        
+```
+
+```{r}
+#保持原有行列次序
+d3heatmap(A,F,F,col=cols)
+```
+
+```{r}
+#對數轉換
+range(A[A > 0])
+hist(A)
+hist(log(13+A,10))
+d3heatmap(log(13+A,10),F,F,col=cols)
+```
+
+```{r}
+#行列集群
+d3heatmap(log(13+A,10),col=cols)
+```
+
+```{r}
+#單方向常態化
+d3heatmap(100*A/rowSums(A), Rowv=T, Colv=F, col=cols)
+```
+
+```{r}
+#雙方向常態化
+m = (rowSums(A) %o% colSums(A))/sum(A)   # cells' expected value 
+r = (A - m)/sqrt(m)    # standerdized residuals
+hist(r)                # check distribution
+cols = colorRamp(c('#008000','#f8f8f8','#f8f8f8','#b32400'))
+d3heatmap(r,col=cols)
+```
